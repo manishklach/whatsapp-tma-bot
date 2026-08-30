@@ -49,7 +49,7 @@ The questionnaire is based on the fields represented in an Indian Trade Marks Fo
 
 - Meta webhook subscription verification
 - Constant-time HMAC-SHA256 validation of `X-Hub-Signature-256`
-- Immediate webhook acknowledgement followed by asynchronous message handling
+- Durable BullMQ enqueue before webhook acknowledgement, with a separate worker process
 - Declarative questionnaire with conditional branches
 - Numbered choices and normalized free-text answers
 - Email, phone, date, answer-length, message-type, and upload-size validation
@@ -76,6 +76,12 @@ The questionnaire is based on the fields represented in an Indian Trade Marks Fo
       └─────────────────────────────────────│ Express webhook      │
                                             │ verification + HMAC  │
                                             └──────────┬───────────┘
+                                                       │ durable enqueue
+                                                       v
+                                                  ┌─────────┐
+                                                  │ BullMQ  │
+                                                  └────┬────┘
+                                                       │ worker pickup
                                                        v
                                             ┌──────────────────────┐
                                             │ Conversation engine  │
@@ -198,11 +204,19 @@ cp .env.example .env
 npm run dev
 ```
 
+In a second terminal, start the durable message worker:
+
+```bash
+npm run dev:worker
+```
+
 For a production-style local run:
 
 ```bash
 npm run build
 npm start
+# In a separate process:
+npm run worker
 ```
 
 ## Configure Meta WhatsApp
@@ -238,6 +252,7 @@ The Graph API version is configurable so deployments can upgrade without source 
 | `PDF_API_URL` | No | empty | External PDF endpoint. Empty selects the local renderer. |
 | `PDF_API_TOKEN` | No | empty | Optional bearer token for the external PDF endpoint. |
 | `PDF_API_TIMEOUT_MS` | No | `30000` | PDF request and download timeout. |
+| `PDF_API_DOWNLOAD_ALLOWLIST` | No | empty | Comma-separated trusted parent domains or exact hosts for `downloadUrl` responses. Empty rejects every download URL while still allowing direct PDF responses. |
 
 Never commit `.env`. The repository includes only `.env.example` placeholders.
 
@@ -284,6 +299,8 @@ Or return a download URL:
 }
 ```
 
+Download URLs must use HTTPS and their hostname must match `PDF_API_DOWNLOAD_ALLOWLIST`. An entry such as `files.example.com` permits that exact host and its subdomains; redirects are rejected. Leave the allowlist empty if the external provider always returns PDF bytes directly.
+
 An API error or timeout returns the session to `reviewing`; the user can reply `CONFIRM` to retry without re-entering answers.
 
 ## HTTP endpoints
@@ -311,9 +328,11 @@ The webhook body is limited to 2 MB. User-uploaded media is downloaded separatel
 │   ├── index.ts               # Dependency wiring and process lifecycle
 │   ├── pdf.ts                 # Local and external PDF providers
 │   ├── questions.ts           # TM-A questions and validation
+│   ├── queue.ts               # BullMQ producer and worker wiring
 │   ├── store.ts               # Redis and in-memory stores
 │   ├── types.ts               # Shared interfaces and data types
-│   └── whatsapp.ts            # Graph API client and webhook parser
+│   ├── whatsapp.ts            # Graph API client and webhook parser
+│   └── worker.ts              # Dedicated message-worker entry point
 ├── tests/
 │   ├── conversation.test.ts
 │   └── webhook.test.ts
@@ -335,11 +354,13 @@ Available scripts:
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` | Start the service with TypeScript watch mode. |
+| `npm run dev:worker` | Start the message worker with TypeScript watch mode. |
 | `npm run typecheck` | Run strict TypeScript checking without output. |
 | `npm test` | Run the Vitest suite once. |
 | `npm run test:watch` | Run tests interactively in watch mode. |
 | `npm run build` | Compile production JavaScript into `dist/`. |
 | `npm start` | Run the compiled service. |
+| `npm run worker` | Run the compiled message worker. |
 
 The automated suite covers webhook verification and signatures, new-session behavior, message deduplication, choice validation, binary session serialization, and readable PDF creation. Every push and pull request runs installation, type checking, tests, and the production build in GitHub Actions.
 
@@ -365,8 +386,8 @@ Implemented controls include webhook HMAC verification, constant-time signature 
 
 The repository is a complete working reference implementation. Higher-volume or strict-delivery deployments should additionally:
 
-- place a durable queue between webhook acknowledgement and message processing;
-- run message workers separately from HTTP replicas;
+- scale HTTP producers and BullMQ workers independently;
+- monitor queue depth, failed jobs, stalled jobs, retries, and processing latency;
 - add exponential backoff and jitter for Graph/API `429` and `5xx` responses;
 - add distributed tracing, structured redacted logs, metrics, and alerts;
 - add rate limits per sender and business number;

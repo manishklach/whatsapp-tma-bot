@@ -15,12 +15,12 @@ End user
 Meta WhatsApp Cloud API
    | signed webhook                    | send text / upload PDF / download media
    v                                   ^
-Express webhook -> conversation engine -> WhatsApp client
-                       |          |
-                       v          v
-                     Redis     PDF provider
-                                |       |
-                         built-in PDF   external multipart API
+Express webhook -> BullMQ queue -> message worker -> conversation engine -> WhatsApp client
+                      |                                  |          |
+                      v                                  v          v
+                    Redis                              Redis     PDF provider
+                                                                |       |
+                                                         built-in PDF   external multipart API
 ```
 
 ## Conversation model
@@ -41,11 +41,12 @@ The user may send `BACK`, `SUMMARY`, `RESTART`, or `CANCEL` while collecting. Th
 1. Meta verifies `GET /webhooks/whatsapp` with the configured verify token.
 2. Meta sends a webhook to `POST /webhooks/whatsapp`.
 3. The app validates `X-Hub-Signature-256` against the exact raw request bytes and app secret.
-4. It returns HTTP 200 immediately, then processes each inbound message.
-5. Redis `SET NX` claims each WhatsApp message ID for 24 hours so retries do not duplicate answers or PDFs.
-6. The engine loads the sender's session and applies the message.
-7. Media IDs are resolved and downloaded using the Graph API access token. Media is base64-encoded and retained inside the Redis-backed session for its TTL in this reference implementation; encryption depends on the Redis deployment and storage configuration.
-8. On confirmation, the provider produces PDF bytes. The app uploads those bytes to WhatsApp's media endpoint and sends a document message by media ID.
+4. It durably adds each inbound message to BullMQ and returns HTTP 200 only after Redis confirms the enqueue. Enqueue failure returns HTTP 503 so Meta can retry.
+5. A separate worker picks up the job and calls the conversation engine.
+6. A renewable Redis `SET NX` lock serializes processing for each phone number. Inside that lock, a Redis message claim moves from `processing` to `done` only after successful handling; BullMQ retries may resume `processing`, while `done` messages are ignored for 24 hours.
+7. The engine loads the sender's session and applies the message.
+8. Media IDs are resolved and downloaded using the Graph API access token. Media is base64-encoded and retained inside the Redis-backed session for its TTL in this reference implementation; encryption depends on the Redis deployment and storage configuration.
+9. On confirmation, the provider produces PDF bytes. The app uploads those bytes to WhatsApp's media endpoint and sends a document message by media ID.
 
 ## PDF API contract
 
@@ -59,6 +60,8 @@ The provider accepts either:
 
 - an `application/pdf` response body; or
 - JSON `{ "downloadUrl": "https://..." }`, after which the bot downloads the PDF.
+
+`downloadUrl` is accepted only when it uses HTTPS and its hostname equals or is a subdomain of an entry in `PDF_API_DOWNLOAD_ALLOWLIST`. Redirect following is disabled so an allowed host cannot redirect the bot to an untrusted network target.
 
 The request and download use `PDF_API_TIMEOUT_MS`. Provider failures restore the session to `reviewing`, retain the answers, and let the user retry `CONFIRM`.
 
@@ -82,11 +85,11 @@ Redis append-only persistence is enabled in Docker Compose. Phone numbers and up
 - The health endpoint contains no secret or customer data.
 - Errors sent to users are generic; provider detail remains in service logs.
 
-Production hardening should add a managed secret store, structured redacted logging, metrics/alerts, rate limiting by sender, antivirus scanning for documents, outbound-domain allowlists for `downloadUrl`, Redis TLS/auth, and an asynchronous durable job queue. Meta access tokens should be system-user tokens with the minimum permissions and regular rotation.
+Production hardening should add a managed secret store, structured redacted logging, metrics/alerts, rate limiting by sender, antivirus scanning for documents, Redis TLS/auth, and strict review of the configured PDF download allowlist. Meta access tokens should be system-user tokens with the minimum permissions and regular rotation.
 
 ## Reliability and scaling
 
-Redis makes sessions and deduplication shared across replicas. The webhook acknowledges before processing so slow Graph/PDF operations do not trigger immediate Meta retries. The current post-response work is in-process; a process crash between acknowledgement and completion can lose that attempt. For strict delivery, write messages to a durable queue transactionally before acknowledging and run separate workers. Add exponential backoff for Graph/API `429` and `5xx` responses.
+Redis makes sessions, phone locks, deduplication, and BullMQ jobs shared across replicas. The webhook acknowledges only after durable enqueue, while separate workers process jobs with exponential retry. BullMQ recovers stalled jobs after worker crashes. Per-phone locks prevent concurrent workers from overwriting one user's session. Production deployments should monitor failed/stalled jobs, keep Redis `maxmemory-policy=noeviction`, and add explicit Graph/API retry classification for `429` and `5xx` responses.
 
 ## Testing strategy
 

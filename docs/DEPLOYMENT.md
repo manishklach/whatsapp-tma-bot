@@ -39,6 +39,7 @@ Leave `PDF_API_URL` blank to use the included PDFKit renderer. To use a document
 - Store secrets in the platform secret manager.
 - Set a retention period matching the privacy notice and legal obligations.
 - Add antivirus scanning and encrypted object storage for uploaded documents.
-- Add a durable queue before scaling or requiring guaranteed processing.
-- Configure alerts for webhook error rate, Graph API failures, PDF failures, Redis availability, and queue age.
+- Run at least one worker process and scale workers independently from the HTTP service.
+- Keep Redis `maxmemory-policy=noeviction` so BullMQ keys are never evicted.
+- Configure alerts for webhook error rate, failed/stalled jobs, Graph API failures, PDF failures, Redis availability, and queue age.
 - Run an end-to-end test with a Meta test number before connecting a production number.

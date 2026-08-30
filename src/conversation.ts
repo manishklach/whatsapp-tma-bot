@@ -19,7 +19,16 @@ export class ConversationService {
   constructor(private readonly store: SessionStore, private readonly messaging: MessagingClient, private readonly pdf: PdfProvider) {}
 
   async handle(message: IncomingMessage): Promise<void> {
+    await this.store.withPhoneLock(message.from, () => this.handleLocked(message));
+  }
+
+  private async handleLocked(message: IncomingMessage): Promise<void> {
     if (!(await this.store.claimMessage(message.id))) return;
+    await this.processMessage(message);
+    await this.store.completeMessage(message.id);
+  }
+
+  private async processMessage(message: IncomingMessage): Promise<void> {
     const command = message.text?.trim().toUpperCase();
     let session = await this.store.get(message.from);
 

@@ -32,6 +32,8 @@ export interface SessionStore {
   set(session: Session): Promise<void>;
   delete(phone: string): Promise<void>;
   claimMessage(messageId: string): Promise<boolean>;
+  completeMessage(messageId: string): Promise<void>;
+  withPhoneLock<T>(phone: string, work: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 

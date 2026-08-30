@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const optionalUrl = z.string().trim().optional().transform((value) => value || undefined).pipe(z.string().url().optional());
+const downloadAllowlist = z.string().default("").transform((value) => value.split(",").map((host) => host.trim().toLowerCase().replace(/^\./, "").replace(/\.$/, "")).filter(Boolean)).pipe(z.array(z.string().regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/)));
 
 const schema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
@@ -14,7 +15,8 @@ const schema = z.object({
   SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
   PDF_API_URL: optionalUrl,
   PDF_API_TOKEN: z.string().optional().transform((value) => value || undefined),
-  PDF_API_TIMEOUT_MS: z.coerce.number().int().positive().default(30000)
+  PDF_API_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  PDF_API_DOWNLOAD_ALLOWLIST: downloadAllowlist
 });
 
 export type Config = z.infer<typeof schema>;

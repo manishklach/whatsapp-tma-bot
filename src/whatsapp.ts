@@ -1,5 +1,7 @@
 import type { IncomingMessage, MediaAnswer, MessagingClient } from "./types.js";
 
+const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+
 type WhatsAppConfig = {
   accessToken: string;
   phoneNumberId: string;
@@ -48,8 +50,26 @@ export class WhatsAppClient implements MessagingClient {
     const { url, mime_type } = (await metadata.json()) as { url: string; mime_type: string };
     const response = await fetch(url, { headers: { Authorization: `Bearer ${this.config.accessToken}` } });
     if (!response.ok) throw new Error(`Media download failed: ${response.status}`);
-    const data = Buffer.from(await response.arrayBuffer());
-    if (data.length > 15 * 1024 * 1024) throw new Error("Uploaded media exceeds the 15 MB limit");
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_MEDIA_BYTES) {
+      await response.body?.cancel();
+      throw new Error("Uploaded media exceeds the 15 MB limit");
+    }
+    if (!response.body) throw new Error("Media download returned an empty body");
+    const reader = response.body.getReader();
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_MEDIA_BYTES) {
+        await reader.cancel();
+        throw new Error("Uploaded media exceeds the 15 MB limit");
+      }
+      chunks.push(Buffer.from(value));
+    }
+    const data = Buffer.concat(chunks, total);
     return { mediaId, mimeType: mime_type, filename, data };
   }
 }

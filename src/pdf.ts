@@ -65,7 +65,7 @@ export class LocalPdfProvider implements PdfProvider {
 }
 
 export class ApiPdfProvider implements PdfProvider {
-  constructor(private readonly url: string, private readonly token?: string, private readonly timeoutMs = 30000) {}
+  constructor(private readonly url: string, private readonly token?: string, private readonly timeoutMs = 30000, private readonly downloadAllowlist: string[] = []) {}
   async generate(answers: Record<string, Answer>): Promise<Buffer> {
     const form = new FormData();
     const payload: Record<string, unknown> = {};
@@ -80,7 +80,11 @@ export class ApiPdfProvider implements PdfProvider {
     if (contentType.includes("application/pdf")) return Buffer.from(await response.arrayBuffer());
     const { downloadUrl } = (await response.json()) as { downloadUrl?: string };
     if (!downloadUrl) throw new Error("PDF API must return application/pdf or JSON with downloadUrl");
-    const download = await fetch(downloadUrl, { signal: AbortSignal.timeout(this.timeoutMs) });
+    const parsedDownloadUrl = new URL(downloadUrl);
+    const hostname = parsedDownloadUrl.hostname.toLowerCase().replace(/\.$/, "");
+    const allowed = parsedDownloadUrl.protocol === "https:" && this.downloadAllowlist.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+    if (!allowed) throw new Error(`PDF download host is not allowed: ${hostname}`);
+    const download = await fetch(parsedDownloadUrl, { redirect: "error", signal: AbortSignal.timeout(this.timeoutMs) });
     if (!download.ok) throw new Error(`PDF download failed: ${download.status}`);
     return Buffer.from(await download.arrayBuffer());
   }

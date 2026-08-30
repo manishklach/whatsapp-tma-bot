@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import express, { type Request, type Response } from "express";
-import type { ConversationService } from "./conversation.js";
+import type { MessageQueue } from "./queue.js";
 import { parseIncomingMessages } from "./whatsapp.js";
 
-type AppOptions = { verifyToken: string; appSecret: string; conversation: ConversationService };
+type AppOptions = { verifyToken: string; appSecret: string; queue: Pick<MessageQueue, "enqueue"> };
 
 function signatureValid(raw: Buffer, signature: string | undefined, secret: string): boolean {
   if (!signature?.startsWith("sha256=")) return false;
@@ -21,14 +21,18 @@ export function createApp(options: AppOptions) {
     if (req.query["hub.mode"] === "subscribe" && req.query["hub.verify_token"] === options.verifyToken) return res.status(200).send(req.query["hub.challenge"]);
     return res.sendStatus(403);
   });
-  app.post("/webhooks/whatsapp", express.raw({ type: "application/json", limit: "2mb" }), (req: Request, res: Response) => {
+  app.post("/webhooks/whatsapp", express.raw({ type: "application/json", limit: "2mb" }), async (req: Request, res: Response) => {
     const raw = req.body as Buffer;
     if (!signatureValid(raw, req.header("x-hub-signature-256"), options.appSecret)) return res.sendStatus(401);
     let body: unknown;
     try { body = JSON.parse(raw.toString("utf8")); } catch { return res.sendStatus(400); }
-    res.sendStatus(200);
-    for (const message of parseIncomingMessages(body)) {
-      void options.conversation.handle(message).catch((error) => console.error("Message processing failed", { messageId: message.id, error }));
+    const messages = parseIncomingMessages(body);
+    try {
+      await Promise.all(messages.map((message) => options.queue.enqueue(message)));
+      return res.sendStatus(200);
+    } catch (error) {
+      console.error("Failed to durably enqueue webhook messages", { messageIds: messages.map((message) => message.id), error });
+      return res.sendStatus(503);
     }
   });
   return app;
