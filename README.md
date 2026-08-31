@@ -443,6 +443,7 @@ The repository is a complete working reference implementation. Higher-volume or 
 - [Detailed design](docs/DESIGN.md): architecture, state, PDF contract, data retention, security, reliability, testing, and extension points.
 - [Deployment guide](docs/DEPLOYMENT.md): prerequisites, local setup, Meta webhook configuration, provider selection, and production checklist.
 - [AI-assisted deployment runbook](docs/AI_DEPLOYMENT_RUNBOOK.md): an end-to-end, safety-conscious procedure designed to be handed directly to Gemini or another AI operator.
+- [Ready-to-paste Gemini prompt](docs/GEMINI_DEPLOYMENT_PROMPT.md): a standalone prompt that instructs Gemini to follow the runbook, protect secrets, stop at human checkpoints, and verify the complete deployment.
 - [Changelog](CHANGELOG.md): version history and release details.
 
 ## Contributing and license

@@ -562,6 +562,8 @@ Remaining human actions: <list or none>
 
 ## Ready-to-paste prompt for Gemini or another AI
 
+The prompt is also available as a standalone document: [GEMINI_DEPLOYMENT_PROMPT.md](GEMINI_DEPLOYMENT_PROMPT.md).
+
 Copy the prompt below and attach or paste this runbook when asking an AI agent to deploy the project:
 
 ```text
