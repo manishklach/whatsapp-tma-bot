@@ -1,5 +1,7 @@
 # Deployment and Meta setup
 
+For a complete provider-neutral procedure that can be given directly to Gemini or another AI agent, use [AI_DEPLOYMENT_RUNBOOK.md](AI_DEPLOYMENT_RUNBOOK.md).
+
 ## 1. Prerequisites
 
 - Node.js 20+ or Docker

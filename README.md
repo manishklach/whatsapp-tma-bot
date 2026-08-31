@@ -319,8 +319,9 @@ The webhook body is limited to 2 MB. User-uploaded media is downloaded separatel
 .
 ├── .github/workflows/ci.yml   # Typecheck, tests, and build
 ├── docs/
-│   ├── DESIGN.md              # Architecture and engineering decisions
-│   └── DEPLOYMENT.md          # Meta and production deployment guide
+│   ├── AI_DEPLOYMENT_RUNBOOK.md # End-to-end AI operator procedure
+│   ├── DESIGN.md                # Architecture and engineering decisions
+│   └── DEPLOYMENT.md            # Meta and production deployment guide
 ├── src/
 │   ├── app.ts                 # Express routes and HMAC verification
 │   ├── config.ts              # Zod environment validation
@@ -441,6 +442,7 @@ The repository is a complete working reference implementation. Higher-volume or 
 
 - [Detailed design](docs/DESIGN.md): architecture, state, PDF contract, data retention, security, reliability, testing, and extension points.
 - [Deployment guide](docs/DEPLOYMENT.md): prerequisites, local setup, Meta webhook configuration, provider selection, and production checklist.
+- [AI-assisted deployment runbook](docs/AI_DEPLOYMENT_RUNBOOK.md): an end-to-end, safety-conscious procedure designed to be handed directly to Gemini or another AI operator.
 - [Changelog](CHANGELOG.md): version history and release details.
 
 ## Contributing and license
